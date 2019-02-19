@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"log"
+	"math"
 	"net/http"
 	"time"
 
@@ -39,18 +41,47 @@ var humidGauge = prometheus.NewGauge(prometheus.GaugeOpts{
 	Help:      "Humidity data collected from dht11 on RPI",
 })
 
-func collect(gpio *wiringpi.GPIO) {
+func obtainDataOnce(gpio *wiringpi.GPIO) (h, t float64, err error) {
 	for retry := 0; retry < 3; retry++ {
 		h, t, err := dht11.Read(gpio, pinNum)
 		if err == nil {
-			tempGauge.Set(t)
-			humidGauge.Set(h)
-			break
+			return h, t, nil
 		} else {
 			log.Println(err)
-			time.Sleep(2 * time.Second)
+			time.Sleep(1500 * time.Millisecond)
 		}
 	}
+	return 0, 0, errors.New("too many fails, giving up")
+}
+
+var lastH float64
+var lastT float64
+
+func collect(gpio *wiringpi.GPIO, init bool) {
+	h, t, err := obtainDataOnce(gpio)
+	if err != nil {
+		return
+	}
+
+	if init {
+		lastH = h
+		lastT = t
+	}
+
+	if math.Abs(h-lastH) > 10 || math.Abs(t-lastT) > 3 {
+		newH, newT, err := obtainDataOnce(gpio)
+		if err != nil {
+			return
+		}
+		if math.Abs(newH-h) > 10 || math.Abs(newT-t) > 3 {
+			return
+		}
+	}
+
+	lastH = h
+	lastT = t
+	tempGauge.Set(t)
+	humidGauge.Set(h)
 }
 
 func main() {
@@ -59,11 +90,11 @@ func main() {
 		panic(err)
 	}
 
-	collect(gpio)
+	collect(gpio, true)
 	go func() {
-		ticker := time.NewTicker(10 * time.Second)
+		ticker := time.NewTicker(12 * time.Second)
 		for range ticker.C {
-			collect(gpio)
+			collect(gpio, false)
 		}
 	}()
 
