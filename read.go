@@ -77,9 +77,9 @@ func Read(gpio *wiringpi.GPIO, pin int) (h, t float64, err error) {
 	// start signal
 	gpio.PinMode(pin, wiringpi.Output)
 	gpio.DigitalWrite(pin, wiringpi.Low)
-	time.Sleep(20 * time.Millisecond)
+	sleep(20 * time.Millisecond)
 	gpio.DigitalWrite(pin, wiringpi.High)
-	time.Sleep(20 * time.Microsecond)
+	sleep(40 * time.Microsecond)
 
 	// wait for reply
 	gpio.PinMode(pin, wiringpi.Input)
@@ -89,13 +89,11 @@ func Read(gpio *wiringpi.GPIO, pin int) (h, t float64, err error) {
 	}, 100*time.Millisecond) {
 		return 0, 0, errors.New("no response from dht11")
 	}
-	/*
-		if !expect(func() bool {
-			return gpio.DigitalRead(pin) == wiringpi.High
-		}, 100*time.Millisecond) {
-			return 0, 0, errors.New("no response from dht11")
-		}
-	*/
+	if !expect(func() bool {
+		return gpio.DigitalRead(pin) == wiringpi.High
+	}, 100*time.Millisecond) {
+		return 0, 0, errors.New("no response from dht11")
+	}
 
 	var datas [40]bool
 	for i := 0; i < 40; i++ {
